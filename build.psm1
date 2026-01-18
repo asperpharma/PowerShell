@@ -1480,10 +1480,10 @@ function Start-PSPester {
         if ( $environment.IsLinux -and $environment.IsAlpine ) {
             $publishArgs['runtime'] = 'linux-musl-x64'
         }
-        Publish-PSTestTools @publishArgs | ForEach-Object {Write-Host $_}
+        Publish-PSTestTools @publishArgs | Write-Host
 
         # Publish the Microsoft.PowerShell.NamedPipeConnection module for testing custom remote connections.
-        Publish-CustomConnectionTestModule | ForEach-Object { Write-Host $_ }
+        Publish-CustomConnectionTestModule | Write-Host
     }
 
     # All concatenated commands/arguments are suffixed with the delimiter (space)
