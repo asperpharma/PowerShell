@@ -1193,7 +1193,7 @@ function Get-PesterTag {
     $alltags = @{}
     $warnings = @()
 
-    Get-ChildItem -Recurse $testbase -File | Where-Object {$_.name -match "tests.ps1"}| ForEach-Object {
+    Get-ChildItem -Recurse $testbase -File | Where-Object {$_.name -like "*tests.ps1"}| ForEach-Object {
         $fullname = $_.fullname
         $tok = $err = $null
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($FullName, [ref]$tok,[ref]$err)
@@ -1208,7 +1208,7 @@ function Get-PesterTag {
         foreach( $describe in $des) {
             $elements = $describe.CommandElements
             $lineno = $elements[0].Extent.StartLineNumber
-            $foundPriorityTags = @()
+            $foundPriorityTags = [System.Collections.Generic.List[string]]::new()
             for ( $i = 0; $i -lt $elements.Count; $i++) {
                 if ( $elements[$i].extent.text -match "^-t" ) {
                     $vAst = $elements[$i+1]
@@ -1221,7 +1221,7 @@ function Get-PesterTag {
                             # These are valid tags also, but they are not the priority tags
                         }
                         elseif (@('CI', 'FEATURE', 'SCENARIO') -contains $_) {
-                            $foundPriorityTags += $_
+                            $foundPriorityTags.Add($_)
                         }
                         else {
                             $warnings += "${fullname} includes improper tag '$_', line '$lineno'"
