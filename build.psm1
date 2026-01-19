@@ -1348,10 +1348,11 @@ function Publish-PSTestTools {
 
             $dll = $null
             # Limit search depth for better performance - published DLLs are typically in bin root or one level deep
-            $dll = Get-ChildItem -Path bin -Recurse -Filter "*.dll" -Depth 2 -ErrorAction SilentlyContinue
+            # Continue on expected errors (e.g., permission denied on some subdirs) but still report if no DLLs found
+            $dll = Get-ChildItem -Path bin -Recurse -Filter "*.dll" -Depth 2 -ErrorAction Continue
 
             if (-not $dll) {
-                throw "Failed to find exe in $toolPath"
+                throw "Failed to find dll in $toolPath/bin after publish"
             }
 
             if ( -not $env:PATH.Contains($toolPath) ) {
@@ -3314,11 +3315,15 @@ assembly
                 $asm."config-file" = $configfile
                 $asm.time = $suite.time
                 $asm.total = $suite.SelectNodes(".//test-case").Count
-                # Optimize grouped result access - avoid pipeline overhead
-                $asm.Passed = ($tGroup | Where-Object {$_.Name -eq "Success"}).Count
-                $asm.Failed = ($tGroup | Where-Object {$_.Name -eq "Failure"}).Count
-                $asm.Skipped = ($tGroup | Where-Object {$_.Name -eq "Ignored"}).Count
-                $asm.Skipped += ($tGroup | Where-Object {$_.Name -eq "Inconclusive"}).Count
+                # Optimize grouped result access - convert to hashtable for O(1) lookups
+                $tGroupHash = @{}
+                foreach ($group in $tGroup) {
+                    $tGroupHash[$group.Name] = $group.Count
+                }
+                $asm.Passed = if ($tGroupHash.ContainsKey("Success")) { $tGroupHash["Success"] } else { 0 }
+                $asm.Failed = if ($tGroupHash.ContainsKey("Failure")) { $tGroupHash["Failure"] } else { 0 }
+                $asm.Skipped = if ($tGroupHash.ContainsKey("Ignored")) { $tGroupHash["Ignored"] } else { 0 }
+                $asm.Skipped += if ($tGroupHash.ContainsKey("Inconclusive")) { $tGroupHash["Inconclusive"] } else { 0 }
                 $c = [collection]::new()
                 $c.passed = $asm.Passed
                 $c.failed = $asm.failed
