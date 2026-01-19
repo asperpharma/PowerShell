@@ -1193,7 +1193,7 @@ function Get-PesterTag {
     $alltags = @{}
     $warnings = @()
 
-    Get-ChildItem -Recurse $testbase -File | Where-Object {$_.name -match "tests.ps1"}| ForEach-Object {
+    Get-ChildItem -Recurse $testbase -File | Where-Object {$_.name -like "*tests.ps1"}| ForEach-Object {
         $fullname = $_.fullname
         $tok = $err = $null
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($FullName, [ref]$tok,[ref]$err)
@@ -1208,7 +1208,7 @@ function Get-PesterTag {
         foreach( $describe in $des) {
             $elements = $describe.CommandElements
             $lineno = $elements[0].Extent.StartLineNumber
-            $foundPriorityTags = @()
+            $foundPriorityTags = [System.Collections.Generic.List[string]]::new()
             for ( $i = 0; $i -lt $elements.Count; $i++) {
                 if ( $elements[$i].extent.text -match "^-t" ) {
                     $vAst = $elements[$i+1]
@@ -1221,7 +1221,7 @@ function Get-PesterTag {
                             # These are valid tags also, but they are not the priority tags
                         }
                         elseif (@('CI', 'FEATURE', 'SCENARIO') -contains $_) {
-                            $foundPriorityTags += $_
+                            $foundPriorityTags.Add($_)
                         }
                         else {
                             $warnings += "${fullname} includes improper tag '$_', line '$lineno'"
@@ -1480,10 +1480,10 @@ function Start-PSPester {
         if ( $environment.IsLinux -and $environment.IsAlpine ) {
             $publishArgs['runtime'] = 'linux-musl-x64'
         }
-        Publish-PSTestTools @publishArgs | ForEach-Object {Write-Host $_}
+        Publish-PSTestTools @publishArgs | Write-Host
 
         # Publish the Microsoft.PowerShell.NamedPipeConnection module for testing custom remote connections.
-        Publish-CustomConnectionTestModule | ForEach-Object { Write-Host $_ }
+        Publish-CustomConnectionTestModule | Write-Host
     }
 
     # All concatenated commands/arguments are suffixed with the delimiter (space)
@@ -3309,10 +3309,10 @@ assembly
                 $asm."config-file" = $configfile
                 $asm.time = $suite.time
                 $asm.total = $suite.SelectNodes(".//test-case").Count
-                $asm.Passed = $tGroup| Where-Object -FilterScript {$_.Name -eq "Success"} | ForEach-Object -Process {$_.Count}
-                $asm.Failed = $tGroup| Where-Object -FilterScript {$_.Name -eq "Failure"} | ForEach-Object -Process {$_.Count}
-                $asm.Skipped = $tGroup| Where-Object -FilterScript { $_.Name -eq "Ignored" } | ForEach-Object -Process {$_.Count}
-                $asm.Skipped += $tGroup| Where-Object -FilterScript { $_.Name -eq "Inconclusive" } | ForEach-Object -Process {$_.Count}
+                $asm.Passed = ($tGroup | Where-Object -FilterScript {$_.Name -eq "Success"}).Count
+                $asm.Failed = ($tGroup | Where-Object -FilterScript {$_.Name -eq "Failure"}).Count
+                $asm.Skipped = ($tGroup | Where-Object -FilterScript { $_.Name -eq "Ignored" }).Count
+                $asm.Skipped += ($tGroup | Where-Object -FilterScript { $_.Name -eq "Inconclusive" }).Count
                 $c = [collection]::new()
                 $c.passed = $asm.Passed
                 $c.failed = $asm.failed
