@@ -1347,7 +1347,8 @@ function Publish-PSTestTools {
             dotnet publish --output bin --configuration $Options.Configuration --framework $Options.Framework --runtime $runtime --self-contained | Out-String | Write-Verbose -Verbose
 
             $dll = $null
-            $dll = Get-ChildItem -Path bin -Recurse -Filter "*.dll"
+            # Limit search depth for better performance - published DLLs are typically in bin root or one level deep
+            $dll = Get-ChildItem -Path bin -Recurse -Filter "*.dll" -Depth 2 -ErrorAction SilentlyContinue
 
             if (-not $dll) {
                 throw "Failed to find exe in $toolPath"
@@ -3313,10 +3314,11 @@ assembly
                 $asm."config-file" = $configfile
                 $asm.time = $suite.time
                 $asm.total = $suite.SelectNodes(".//test-case").Count
-                $asm.Passed = $tGroup| Where-Object -FilterScript {$_.Name -eq "Success"} | ForEach-Object -Process {$_.Count}
-                $asm.Failed = $tGroup| Where-Object -FilterScript {$_.Name -eq "Failure"} | ForEach-Object -Process {$_.Count}
-                $asm.Skipped = $tGroup| Where-Object -FilterScript { $_.Name -eq "Ignored" } | ForEach-Object -Process {$_.Count}
-                $asm.Skipped += $tGroup| Where-Object -FilterScript { $_.Name -eq "Inconclusive" } | ForEach-Object -Process {$_.Count}
+                # Optimize grouped result access - avoid pipeline overhead
+                $asm.Passed = ($tGroup | Where-Object {$_.Name -eq "Success"}).Count
+                $asm.Failed = ($tGroup | Where-Object {$_.Name -eq "Failure"}).Count
+                $asm.Skipped = ($tGroup | Where-Object {$_.Name -eq "Ignored"}).Count
+                $asm.Skipped += ($tGroup | Where-Object {$_.Name -eq "Inconclusive"}).Count
                 $c = [collection]::new()
                 $c.passed = $asm.Passed
                 $c.failed = $asm.failed
