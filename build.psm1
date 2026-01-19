@@ -977,8 +977,11 @@ function Restore-PSModuleToBuild
     $modulesDir = Join-Path -Path $publishPath -ChildPath "Modules"
     Copy-PSGalleryModules -Destination $modulesDir -CsProjPath "$PSScriptRoot\src\Modules\PSGalleryModules.csproj"
 
-    # Remove .nupkg.metadata files
-    Get-ChildItem $PublishPath -Filter '.nupkg.metadata' -Recurse | ForEach-Object { Remove-Item $_.FullName -ErrorAction SilentlyContinue -Force }
+    # Remove .nupkg.metadata files - collect first, then delete for better performance
+    $metadataFiles = @(Get-ChildItem $PublishPath -Filter '.nupkg.metadata' -Recurse)
+    if ($metadataFiles.Count -gt 0) {
+        $metadataFiles | Remove-Item -ErrorAction SilentlyContinue -Force
+    }
 }
 
 function Restore-PSPester
@@ -1191,7 +1194,7 @@ function Get-PSOutput {
 function Get-PesterTag {
     param ( [Parameter(Position=0)][string]$testbase = "$PSScriptRoot/test/powershell" )
     $alltags = @{}
-    $warnings = @()
+    $warnings = [System.Collections.Generic.List[string]]::new()
 
     Get-ChildItem -Recurse $testbase -File | Where-Object {$_.name -match "tests.ps1"}| ForEach-Object {
         $fullname = $_.fullname
@@ -1208,12 +1211,12 @@ function Get-PesterTag {
         foreach( $describe in $des) {
             $elements = $describe.CommandElements
             $lineno = $elements[0].Extent.StartLineNumber
-            $foundPriorityTags = @()
+            $foundPriorityTags = [System.Collections.Generic.List[string]]::new()
             for ( $i = 0; $i -lt $elements.Count; $i++) {
                 if ( $elements[$i].extent.text -match "^-t" ) {
                     $vAst = $elements[$i+1]
                     if ( $vAst.FindAll({$args[0] -is "System.Management.Automation.Language.VariableExpressionAst"},$true) ) {
-                        $warnings += "TAGS must be static strings, error in ${fullname}, line $lineno"
+                        $warnings.Add("TAGS must be static strings, error in ${fullname}, line $lineno")
                     }
                     $values = $vAst.FindAll({$args[0] -is "System.Management.Automation.Language.StringConstantExpressionAst"},$true).Value
                     $values | ForEach-Object {
@@ -1221,10 +1224,10 @@ function Get-PesterTag {
                             # These are valid tags also, but they are not the priority tags
                         }
                         elseif (@('CI', 'FEATURE', 'SCENARIO') -contains $_) {
-                            $foundPriorityTags += $_
+                            $foundPriorityTags.Add($_)
                         }
                         else {
-                            $warnings += "${fullname} includes improper tag '$_', line '$lineno'"
+                            $warnings.Add("${fullname} includes improper tag '$_', line '$lineno'")
                         }
 
                         $alltags[$_]++
@@ -1232,10 +1235,10 @@ function Get-PesterTag {
                 }
             }
             if ( $foundPriorityTags.Count -eq 0 ) {
-                $warnings += "${fullname}:$lineno does not include -Tag in Describe"
+                $warnings.Add("${fullname}:$lineno does not include -Tag in Describe")
             }
             elseif ( $foundPriorityTags.Count -gt 1 ) {
-                $warnings += "${fullname}:$lineno includes more then one scope -Tag: $foundPriorityTags"
+                $warnings.Add("${fullname}:$lineno includes more than one scope -Tag: $foundPriorityTags")
             }
         }
     }
@@ -1344,10 +1347,12 @@ function Publish-PSTestTools {
             dotnet publish --output bin --configuration $Options.Configuration --framework $Options.Framework --runtime $runtime --self-contained | Out-String | Write-Verbose -Verbose
 
             $dll = $null
-            $dll = Get-ChildItem -Path bin -Recurse -Filter "*.dll"
+            # Limit search depth for better performance - published DLLs are typically in bin root or one level deep
+            # Continue on expected errors (e.g., permission denied on some subdirs) but still report if no DLLs found
+            $dll = Get-ChildItem -Path bin -Recurse -Filter "*.dll" -Depth 2 -ErrorAction Continue
 
             if (-not $dll) {
-                throw "Failed to find exe in $toolPath"
+                throw "Failed to find DLL in $toolPath/bin after publish"
             }
 
             if ( -not $env:PATH.Contains($toolPath) ) {
@@ -1369,7 +1374,8 @@ function Publish-PSTestTools {
 function Get-ExperimentalFeatureTests {
     $testMetadataFile = Join-Path $PSScriptRoot "test/tools/TestMetadata.json"
     $metadata = Get-Content -Path $testMetadataFile -Raw | ConvertFrom-Json | ForEach-Object -MemberName ExperimentalFeatures
-    $features = $metadata | Get-Member -MemberType NoteProperty | ForEach-Object -MemberName Name
+    # Use PSObject.Properties for better performance instead of Get-Member reflection
+    $features = $metadata.PSObject.Properties.Name
 
     $featureTests = @{}
     foreach ($featureName in $features) {
@@ -3309,10 +3315,15 @@ assembly
                 $asm."config-file" = $configfile
                 $asm.time = $suite.time
                 $asm.total = $suite.SelectNodes(".//test-case").Count
-                $asm.Passed = $tGroup| Where-Object -FilterScript {$_.Name -eq "Success"} | ForEach-Object -Process {$_.Count}
-                $asm.Failed = $tGroup| Where-Object -FilterScript {$_.Name -eq "Failure"} | ForEach-Object -Process {$_.Count}
-                $asm.Skipped = $tGroup| Where-Object -FilterScript { $_.Name -eq "Ignored" } | ForEach-Object -Process {$_.Count}
-                $asm.Skipped += $tGroup| Where-Object -FilterScript { $_.Name -eq "Inconclusive" } | ForEach-Object -Process {$_.Count}
+                # Optimize grouped result access - convert to hashtable for O(1) lookups
+                $tGroupHash = @{}
+                foreach ($group in $tGroup) {
+                    $tGroupHash[$group.Name] = $group.Count
+                }
+                $asm.Passed = if ($tGroupHash.ContainsKey("Success")) { $tGroupHash["Success"] } else { 0 }
+                $asm.Failed = if ($tGroupHash.ContainsKey("Failure")) { $tGroupHash["Failure"] } else { 0 }
+                $asm.Skipped = if ($tGroupHash.ContainsKey("Ignored")) { $tGroupHash["Ignored"] } else { 0 }
+                $asm.Skipped += if ($tGroupHash.ContainsKey("Inconclusive")) { $tGroupHash["Inconclusive"] } else { 0 }
                 $c = [collection]::new()
                 $c.passed = $asm.Passed
                 $c.failed = $asm.failed

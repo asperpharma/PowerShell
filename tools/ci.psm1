@@ -1119,7 +1119,7 @@ $Message
         }
     }
 
-    $filesWithConflicts = @()
+    $filesWithConflicts = [System.Collections.Generic.List[object]]::new()
     $filesChecked = 0
 
     foreach ($filePath in $absolutePaths) {
@@ -1157,19 +1157,19 @@ $Message
 
             if ($matchedLines) {
                 # Collect marker details with line numbers (Select-String provides LineNumber automatically)
-                $markerDetails = @()
+                $markerDetails = [System.Collections.Generic.List[object]]::new()
 
                 foreach ($match in $matchedLines) {
-                    $markerDetails += [PSCustomObject]@{
+                    $markerDetails.Add([PSCustomObject]@{
                         Marker = $match.Matches[0].Groups[1].Value
                         Line = $match.LineNumber
-                    }
+                    })
                 }
 
-                $filesWithConflicts += [PSCustomObject]@{
+                $filesWithConflicts.Add([PSCustomObject]@{
                     File = $relativePath
                     MarkerDetails = $markerDetails
-                }
+                })
 
                 Write-Host "  ❌ CONFLICT MARKERS FOUND in $relativePath" -ForegroundColor Red
                 foreach ($detail in $markerDetails) {
@@ -1195,43 +1195,48 @@ $Message
 
     # Create GitHub Actions job summary
     if ($SummaryPath) {
-        $summaryContent = @"
-# Merge Conflict Marker Check Results
-
-## Summary
-- **Files Checked:** $filesChecked
-- **Files with Conflicts:** $($filesWithConflicts.Count)
-
-"@
+        # Use StringBuilder for efficient string building
+        $summaryBuilder = [System.Text.StringBuilder]::new()
+        [void]$summaryBuilder.AppendLine("# Merge Conflict Marker Check Results")
+        [void]$summaryBuilder.AppendLine()
+        [void]$summaryBuilder.AppendLine("## Summary")
+        [void]$summaryBuilder.AppendLine("- **Files Checked:** $filesChecked")
+        [void]$summaryBuilder.AppendLine("- **Files with Conflicts:** $($filesWithConflicts.Count)")
+        [void]$summaryBuilder.AppendLine()
 
         if ($filesWithConflicts.Count -gt 0) {
             Write-Host "`n❌ Merge conflict markers detected in the following files:" -ForegroundColor Red
 
-            $summaryContent += "`n## ❌ Conflicts Detected`n`n"
-            $summaryContent += "The following files contain merge conflict markers:`n`n"
+            [void]$summaryBuilder.AppendLine("## ❌ Conflicts Detected")
+            [void]$summaryBuilder.AppendLine()
+            [void]$summaryBuilder.AppendLine("The following files contain merge conflict markers:")
+            [void]$summaryBuilder.AppendLine()
 
             foreach ($fileInfo in $filesWithConflicts) {
                 Write-Host "  - $($fileInfo.File)" -ForegroundColor Red
 
-                $summaryContent += "### 📄 ``$($fileInfo.File)```n`n"
-                $summaryContent += "| Line | Marker |`n"
-                $summaryContent += "|------|--------|`n"
+                [void]$summaryBuilder.AppendLine("### 📄 ``$($fileInfo.File)``")
+                [void]$summaryBuilder.AppendLine()
+                [void]$summaryBuilder.AppendLine("| Line | Marker |")
+                [void]$summaryBuilder.AppendLine("|------|--------|")
 
                 foreach ($detail in $fileInfo.MarkerDetails) {
                     Write-Host "     Line $($detail.Line): $($detail.Marker)" -ForegroundColor Red
-                    $summaryContent += "| $($detail.Line) | ``$($detail.Marker)`` |`n"
+                    [void]$summaryBuilder.AppendLine("| $($detail.Line) | ``$($detail.Marker)`` |")
                 }
-                $summaryContent += "`n"
+                [void]$summaryBuilder.AppendLine()
             }
 
-            $summaryContent += "`n**Action Required:** Please resolve these conflicts before merging.`n"
+            [void]$summaryBuilder.AppendLine("**Action Required:** Please resolve these conflicts before merging.")
             Write-Host "`nPlease resolve these conflicts before merging." -ForegroundColor Red
         } else {
             Write-Host "`n✅ No merge conflict markers found" -ForegroundColor Green
-            $summaryContent += "`n## ✅ No Conflicts Found`n`nAll checked files are free of merge conflict markers.`n"
+            [void]$summaryBuilder.AppendLine("## ✅ No Conflicts Found")
+            [void]$summaryBuilder.AppendLine()
+            [void]$summaryBuilder.AppendLine("All checked files are free of merge conflict markers.")
         }
 
-        $summaryContent | Out-File -FilePath $SummaryPath -Encoding utf8
+        $summaryBuilder.ToString() | Out-File -FilePath $SummaryPath -Encoding utf8
     }
 
     # Exit with error if conflicts found
