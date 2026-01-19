@@ -1238,7 +1238,7 @@ function Get-PesterTag {
                 $warnings.Add("${fullname}:$lineno does not include -Tag in Describe")
             }
             elseif ( $foundPriorityTags.Count -gt 1 ) {
-                $warnings.Add("${fullname}:$lineno includes more then one scope -Tag: $foundPriorityTags")
+                $warnings.Add("${fullname}:$lineno includes more than one scope -Tag: $foundPriorityTags")
             }
         }
     }
@@ -1352,7 +1352,7 @@ function Publish-PSTestTools {
             $dll = Get-ChildItem -Path bin -Recurse -Filter "*.dll" -Depth 2 -ErrorAction Continue
 
             if (-not $dll) {
-                throw "Failed to find dll in $toolPath/bin after publish"
+                throw "Failed to find DLL in $toolPath/bin after publish"
             }
 
             if ( -not $env:PATH.Contains($toolPath) ) {
