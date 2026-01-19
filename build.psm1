@@ -3309,10 +3309,10 @@ assembly
                 $asm."config-file" = $configfile
                 $asm.time = $suite.time
                 $asm.total = $suite.SelectNodes(".//test-case").Count
-                $asm.Passed = $tGroup| Where-Object -FilterScript {$_.Name -eq "Success"} | ForEach-Object -Process {$_.Count}
-                $asm.Failed = $tGroup| Where-Object -FilterScript {$_.Name -eq "Failure"} | ForEach-Object -Process {$_.Count}
-                $asm.Skipped = $tGroup| Where-Object -FilterScript { $_.Name -eq "Ignored" } | ForEach-Object -Process {$_.Count}
-                $asm.Skipped += $tGroup| Where-Object -FilterScript { $_.Name -eq "Inconclusive" } | ForEach-Object -Process {$_.Count}
+                $asm.Passed = ($tGroup | Where-Object -FilterScript {$_.Name -eq "Success"}).Count
+                $asm.Failed = ($tGroup | Where-Object -FilterScript {$_.Name -eq "Failure"}).Count
+                $asm.Skipped = ($tGroup | Where-Object -FilterScript { $_.Name -eq "Ignored" }).Count
+                $asm.Skipped += ($tGroup | Where-Object -FilterScript { $_.Name -eq "Inconclusive" }).Count
                 $c = [collection]::new()
                 $c.passed = $asm.Passed
                 $c.failed = $asm.failed
